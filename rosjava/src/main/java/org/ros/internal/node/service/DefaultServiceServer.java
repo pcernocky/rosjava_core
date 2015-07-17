@@ -20,8 +20,8 @@ import com.google.common.base.Preconditions;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandler;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler;
 import org.ros.address.AdvertiseAddress;
 import org.ros.concurrent.ListenerGroup;
 import org.ros.concurrent.SignalRunnable;
@@ -95,7 +95,7 @@ public class DefaultServiceServer<T, S> implements ServiceServer<T, S> {
     });
   }
 
-  public ChannelBuffer finishHandshake(ConnectionHeader incomingConnectionHeader) {
+  public ByteBuf finishHandshake(ConnectionHeader incomingConnectionHeader) {
     if (DEBUG) {
       log.info("Client handshake header: " + incomingConnectionHeader);
     }

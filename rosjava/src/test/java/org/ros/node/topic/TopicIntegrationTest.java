@@ -16,10 +16,6 @@
 
 package org.ros.node.topic;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import org.junit.Test;
 import org.ros.RosTest;
 import org.ros.concurrent.CancellableLoop;
@@ -36,6 +32,10 @@ import org.ros.node.ConnectedNode;
 import java.net.InetSocketAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Make sure publishers can talk with subscribers over a network connection.

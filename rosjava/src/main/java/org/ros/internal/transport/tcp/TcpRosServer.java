@@ -17,25 +17,24 @@
 package org.ros.internal.transport.tcp;
 
 import com.google.common.base.Preconditions;
-
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.buffer.HeapChannelBufferFactory;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFactory;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.ros.address.AdvertiseAddress;
 import org.ros.address.BindAddress;
 import org.ros.internal.node.service.ServiceManager;
 import org.ros.internal.node.topic.TopicParticipantManager;
 
 import java.net.InetSocketAddress;
-import java.nio.ByteOrder;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The TCP server which is used for data communication between publishers and
@@ -58,10 +57,9 @@ public class TcpRosServer {
   private final ServiceManager serviceManager;
   private final ScheduledExecutorService executorService;
 
-  private ChannelFactory channelFactory;
-  private ServerBootstrap bootstrap;
+  private NioEventLoopGroup eventLoopGroup;
+  private DefaultChannelGroup incomingChannelGroup;
   private Channel outgoingChannel;
-  private ChannelGroup incomingChannelGroup;
 
   public TcpRosServer(BindAddress bindAddress, AdvertiseAddress advertiseAddress,
       TopicParticipantManager topicParticipantManager, ServiceManager serviceManager,
@@ -75,20 +73,22 @@ public class TcpRosServer {
 
   public void start() {
     Preconditions.checkState(outgoingChannel == null);
-    channelFactory = new NioServerSocketChannelFactory(executorService, executorService);
-    bootstrap = new ServerBootstrap(channelFactory);
-    bootstrap.setOption("child.bufferFactory",
-        new HeapChannelBufferFactory(ByteOrder.LITTLE_ENDIAN));
-    bootstrap.setOption("child.keepAlive", true);
-    incomingChannelGroup = new DefaultChannelGroup();
-    bootstrap.setPipelineFactory(new TcpServerPipelineFactory(incomingChannelGroup,
-        topicParticipantManager, serviceManager));
 
-    outgoingChannel = bootstrap.bind(bindAddress.toInetSocketAddress());
+    ServerBootstrap bootstrap = new ServerBootstrap();
+    bootstrap.channel(NioServerSocketChannel.class);
+    bootstrap.childOption(ChannelOption.SO_KEEPALIVE, true);
+
+    eventLoopGroup = new NioEventLoopGroup();
+    bootstrap.group(eventLoopGroup);
+
+    incomingChannelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+    bootstrap.childHandler(new TcpServerInitializer(incomingChannelGroup, topicParticipantManager, serviceManager));
+
+    outgoingChannel = bootstrap.bind(bindAddress.toInetSocketAddress()).syncUninterruptibly().channel();
     advertiseAddress.setPortCallable(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {
-        return ((InetSocketAddress) outgoingChannel.getLocalAddress()).getPort();
+        return ((InetSocketAddress) outgoingChannel.localAddress()).getPort();
       }
     });
     if (DEBUG) {
@@ -107,15 +107,15 @@ public class TcpRosServer {
     if (DEBUG) {
       log.info("Shutting down: " + getAddress());
     }
+    if (incomingChannelGroup != null) {
+      incomingChannelGroup.close().awaitUninterruptibly();
+    }
     if (outgoingChannel != null) {
       outgoingChannel.close().awaitUninterruptibly();
     }
-    incomingChannelGroup.close().awaitUninterruptibly();
-    // NOTE(damonkohler): We are purposely not calling
-    // channelFactory.releaseExternalResources() or
-    // bootstrap.releaseExternalResources() since only external resources are
-    // the ExecutorService and control of that must remain with the overall
-    // application.
+    if (eventLoopGroup != null) {
+      eventLoopGroup.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS).awaitUninterruptibly();
+    }
     outgoingChannel = null;
   }
 

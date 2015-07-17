@@ -18,23 +18,19 @@ package org.ros.internal.transport.tcp;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-
+import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.bootstrap.ClientBootstrap;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBufferFactory;
-import org.jboss.netty.buffer.HeapChannelBufferFactory;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFactory;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.ros.exception.RosRuntimeException;
 
 import java.net.SocketAddress;
-import java.nio.ByteOrder;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -52,30 +48,29 @@ public class TcpClient {
   private static final boolean DEFAULT_KEEP_ALIVE = true;
 
   private final ChannelGroup channelGroup;
-  private final ChannelFactory channelFactory;
-  private final ChannelBufferFactory channelBufferFactory;
-  private final ClientBootstrap bootstrap;
+  private final Bootstrap bootstrap;
   private final List<NamedChannelHandler> namedChannelHandlers;
 
   private Channel channel;
 
   public TcpClient(final ChannelGroup channelGroup, final Executor executor) {
     this.channelGroup = channelGroup;
-    channelFactory = new NioClientSocketChannelFactory(executor, executor);
-    channelBufferFactory = new HeapChannelBufferFactory(ByteOrder.LITTLE_ENDIAN);
-    bootstrap = new ClientBootstrap(channelFactory);
-    bootstrap.setOption("bufferFactory", channelBufferFactory);
+
+    bootstrap = new Bootstrap();
+    bootstrap.group(new NioEventLoopGroup());
+    bootstrap.channel(NioSocketChannel.class);
+
     setConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT_DURATION, DEFAULT_CONNECTION_TIMEOUT_UNIT);
     setKeepAlive(DEFAULT_KEEP_ALIVE);
     namedChannelHandlers = Lists.newArrayList();
   }
 
   public void setConnectionTimeout(final long duration, final TimeUnit unit) {
-    bootstrap.setOption("connectionTimeoutMillis", TimeUnit.MILLISECONDS.convert(duration, unit));
+    bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) TimeUnit.MILLISECONDS.convert(duration, unit));
   }
 
   public void setKeepAlive(final boolean value) {
-    bootstrap.setOption("keepAlive", value);
+    bootstrap.option(ChannelOption.SO_KEEPALIVE, value);
   }
 
   public void addNamedChannelHandler(final NamedChannelHandler namedChannelHandler) {
@@ -87,26 +82,25 @@ public class TcpClient {
   }
 
   public void connect(final String connectionName, final SocketAddress socketAddress) {
-    final TcpClientPipelineFactory tcpClientPipelineFactory = new TcpClientPipelineFactory(channelGroup) {
+    final TcpClientInitializer tcpClientInitializer = new TcpClientInitializer(channelGroup) {
       @Override
-      public ChannelPipeline getPipeline() {
-        final ChannelPipeline pipeline = super.getPipeline();
+      protected void initChannel(Channel ch) throws Exception {
+        super.initChannel(ch);
         for (final NamedChannelHandler namedChannelHandler : namedChannelHandlers) {
-          pipeline.addLast(namedChannelHandler.getName(), namedChannelHandler);
+          ch.pipeline().addLast(namedChannelHandler.getName(), namedChannelHandler);
         }
-        return pipeline;
       }
     };
-    bootstrap.setPipelineFactory(tcpClientPipelineFactory);
+    bootstrap.handler(tcpClientInitializer);
     final ChannelFuture future = bootstrap.connect(socketAddress).awaitUninterruptibly();
     if (future.isSuccess()) {
-      channel = future.getChannel();
+      channel = future.channel();
       if (DEBUG) {
         log.info("Connected to: " + socketAddress);
       }
     } else {
       // We expect the first connection to succeed. If not, fail fast.
-      throw new RosRuntimeException("Connection exception: " + socketAddress, future.getCause());
+      throw new RosRuntimeException("Connection exception: " + socketAddress, future.cause());
     }
   }
 
@@ -114,9 +108,9 @@ public class TcpClient {
     return channel;
   }
 
-  public ChannelFuture write(final ChannelBuffer buffer) {
+  public ChannelFuture write(final ByteBuf buffer) {
     Preconditions.checkNotNull(channel);
     Preconditions.checkNotNull(buffer);
-    return channel.write(buffer);
+    return channel.writeAndFlush(buffer);
   }
 }

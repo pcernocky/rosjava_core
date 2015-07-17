@@ -46,6 +46,9 @@ subprojects {
     apply plugin: "osgi"
     apply plugin: "idea"
     apply plugin: "eclipse"
+
+    sourceCompatibility = 1.7
+    targetCompatibility = 1.7
   }
 }
 

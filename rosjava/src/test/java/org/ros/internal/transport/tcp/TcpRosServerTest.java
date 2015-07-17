@@ -16,10 +16,6 @@
 
 package org.ros.internal.transport.tcp;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -31,6 +27,10 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * @author kwc@willowgarage.com (Ken Conley)
@@ -89,7 +89,7 @@ public class TcpRosServerTest {
               AdvertiseAddress.newPublic(), null, null, executorService);
       secondServer.start();
       fail();
-    } catch (RuntimeException e) {
+    } catch (Exception e) {
       // Starting a server on an already used port must fail.
     }
     firstServer.shutdown();

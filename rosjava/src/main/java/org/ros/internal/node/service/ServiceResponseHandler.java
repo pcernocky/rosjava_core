@@ -17,11 +17,11 @@
 package org.ros.internal.node.service;
 
 import com.google.common.base.Preconditions;
-
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandler;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.ros.exception.RemoteException;
 import org.ros.internal.node.response.StatusCode;
 import org.ros.message.MessageDeserializer;
@@ -32,11 +32,12 @@ import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 
 /**
- * A Netty {@link SimpleChannelHandler} for service responses.
+ * A Netty {@link ChannelInboundHandler} for service responses.
  * 
  * @author damonkohler@google.com (Damon Kohler)
  */
-class ServiceResponseHandler<ResponseType> extends SimpleChannelHandler {
+@Sharable
+class ServiceResponseHandler<ResponseType> extends ChannelInboundHandlerAdapter {
 
   private final Queue<ServiceResponseListener<ResponseType>> responseListeners;
   private final MessageDeserializer<ResponseType> deserializer;
@@ -50,21 +51,22 @@ class ServiceResponseHandler<ResponseType> extends SimpleChannelHandler {
   }
 
   @Override
-  public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
+  public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
     final ServiceResponseListener<ResponseType> listener = responseListeners.poll();
     Preconditions.checkNotNull(listener, "No listener for incoming service response.");
-    final ServiceServerResponse response = (ServiceServerResponse) e.getMessage();
-    final ChannelBuffer buffer = response.getMessage();
+    final ServiceServerResponse response = (ServiceServerResponse) msg;
+    final ByteBuf buffer = response.getMessage();
     executorService.execute(new Runnable() {
       @Override
       public void run() {
         if (response.getErrorCode() == 1) {
           listener.onSuccess(deserializer.deserialize(buffer));
         } else {
-          String message = Charset.forName("US-ASCII").decode(buffer.toByteBuffer()).toString();
+          String message = Charset.forName("US-ASCII").decode(buffer.nioBuffer()).toString();
           listener.onFailure(new RemoteException(StatusCode.ERROR, message));
         }
       }
     });
   }
+
 }

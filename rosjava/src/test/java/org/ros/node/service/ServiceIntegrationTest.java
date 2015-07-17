@@ -16,10 +16,6 @@
 
 package org.ros.node.service;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import org.junit.Test;
 import org.ros.RosTest;
 import org.ros.exception.DuplicateServiceException;
@@ -33,6 +29,10 @@ import org.ros.node.ConnectedNode;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
@@ -75,7 +75,7 @@ public class ServiceIntegrationTest extends RosTest {
       }
     }, nodeConfiguration);
 
-    assertTrue(countDownServiceServerListener.awaitMasterRegistrationSuccess(1, TimeUnit.SECONDS));
+    assertTrue(countDownServiceServerListener.awaitMasterRegistrationSuccess(2, TimeUnit.SECONDS));
 
     final CountDownLatch latch = new CountDownLatch(2);
     nodeMainExecutor.execute(new AbstractNodeMain() {
@@ -103,7 +103,7 @@ public class ServiceIntegrationTest extends RosTest {
         serviceClient.call(request, new ServiceResponseListener<rosjava_test_msgs.AddTwoIntsResponse>() {
           @Override
           public void onSuccess(rosjava_test_msgs.AddTwoIntsResponse response) {
-            assertEquals(response.getSum(), 4);
+            assertEquals(4, response.getSum());
             latch.countDown();
           }
 
@@ -114,12 +114,13 @@ public class ServiceIntegrationTest extends RosTest {
         });
 
         // Regression test for issue 122.
+        request = serviceClient.newMessage();
         request.setA(3);
         request.setB(3);
         serviceClient.call(request, new ServiceResponseListener<rosjava_test_msgs.AddTwoIntsResponse>() {
           @Override
           public void onSuccess(rosjava_test_msgs.AddTwoIntsResponse response) {
-            assertEquals(response.getSum(), 6);
+            assertEquals(6, response.getSum());
             latch.countDown();
           }
 
