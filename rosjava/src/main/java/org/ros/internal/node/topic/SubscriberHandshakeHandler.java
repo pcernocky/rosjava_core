@@ -16,11 +16,11 @@
 
 package org.ros.internal.node.topic;
 
+import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.MessageEvent;
 import org.ros.internal.transport.BaseClientHandshakeHandler;
 import org.ros.internal.transport.ConnectionHeader;
 import org.ros.internal.transport.ConnectionHeaderFields;
@@ -40,6 +40,7 @@ import java.util.concurrent.ExecutorService;
  * @param <T>
  *          the {@link Subscriber} may only subscribe to messages of this type
  */
+@Sharable
 class SubscriberHandshakeHandler<T> extends BaseClientHandshakeHandler {
 
   private static final Log log = LogFactory.getLog(SubscriberHandshakeHandler.class);
@@ -53,9 +54,8 @@ class SubscriberHandshakeHandler<T> extends BaseClientHandshakeHandler {
   }
 
   @Override
-  protected void onSuccess(ConnectionHeader incomingConnectionHeader, ChannelHandlerContext ctx,
-      MessageEvent e) {
-    ChannelPipeline pipeline = e.getChannel().getPipeline();
+  protected void onSuccess(ConnectionHeader incomingConnectionHeader, ChannelHandlerContext ctx) {
+    ChannelPipeline pipeline = ctx.pipeline();
     pipeline.remove(SubscriberHandshakeHandler.this);
     NamedChannelHandler namedChannelHandler = incomingMessageQueue.getMessageReceiver();
     pipeline.addLast(namedChannelHandler.getName(), namedChannelHandler);
@@ -66,9 +66,9 @@ class SubscriberHandshakeHandler<T> extends BaseClientHandshakeHandler {
   }
 
   @Override
-  protected void onFailure(String errorMessage, ChannelHandlerContext ctx, MessageEvent e) {
+  protected void onFailure(String errorMessage, ChannelHandlerContext ctx) {
     log.error("Subscriber handshake failed: " + errorMessage);
-    e.getChannel().close();
+    ctx.channel().close();
   }
 
   @Override

@@ -16,40 +16,34 @@
 
 package org.ros.internal.transport.tcp;
 
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.handler.codec.frame.LengthFieldBasedFrameDecoder;
-import org.jboss.netty.handler.codec.frame.LengthFieldPrepender;
+import io.netty.channel.Channel;
+import io.netty.channel.group.ChannelGroup;
 import org.ros.internal.node.service.ServiceManager;
 import org.ros.internal.node.topic.TopicParticipantManager;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
  */
-public class TcpServerPipelineFactory extends ConnectionTrackingChannelPipelineFactory {
+public class TcpServerInitializer extends ConnectionTrackingChannelInitializer {
 
-  public static final String LENGTH_FIELD_BASED_FRAME_DECODER = "LengthFieldBasedFrameDecoder";
-  public static final String LENGTH_FIELD_PREPENDER = "LengthFieldPrepender";
   public static final String HANDSHAKE_HANDLER = "HandshakeHandler";
 
   private final TopicParticipantManager topicParticipantManager;
   private final ServiceManager serviceManager;
 
-  public TcpServerPipelineFactory(ChannelGroup channelGroup,
-      TopicParticipantManager topicParticipantManager, ServiceManager serviceManager) {
+  public TcpServerInitializer(ChannelGroup channelGroup,
+                              TopicParticipantManager topicParticipantManager, ServiceManager serviceManager) {
     super(channelGroup);
     this.topicParticipantManager = topicParticipantManager;
     this.serviceManager = serviceManager;
   }
 
   @Override
-  public ChannelPipeline getPipeline() {
-    ChannelPipeline pipeline = super.getPipeline();
-    pipeline.addLast(LENGTH_FIELD_PREPENDER, new LengthFieldPrepender(4));
-    pipeline.addLast(LENGTH_FIELD_BASED_FRAME_DECODER, new LengthFieldBasedFrameDecoder(
-        Integer.MAX_VALUE, 0, 4, 0, 4));
-    pipeline.addLast(HANDSHAKE_HANDLER, new TcpServerHandshakeHandler(topicParticipantManager,
-        serviceManager));
-    return pipeline;
+  protected void initChannel(Channel ch) throws Exception {
+    super.initChannel(ch);
+    ch.pipeline().addLast(HANDSHAKE_HANDLER, new TcpServerHandshakeHandler(topicParticipantManager,
+      serviceManager));
+
   }
+
 }

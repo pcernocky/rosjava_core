@@ -16,30 +16,35 @@
 
 package org.ros.internal.transport.tcp;
 
-import static org.jboss.netty.channel.Channels.pipeline;
-
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.group.ChannelGroup;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.codec.LengthFieldPrepender;
 import org.ros.internal.transport.ConnectionTrackingHandler;
+
+import java.nio.ByteOrder;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
  */
-public class ConnectionTrackingChannelPipelineFactory implements ChannelPipelineFactory {
+public class ConnectionTrackingChannelInitializer extends ChannelInitializer {
 
   public static final String CONNECTION_TRACKING_HANDLER = "ConnectionTrackingHandler";
+  public static final String LENGTH_FIELD_BASED_FRAME_DECODER = "LengthFieldBasedFrameDecoder";
+  public static final String LENGTH_FIELD_PREPENDER = "LengthFieldPrepender";
 
   private final ConnectionTrackingHandler connectionTrackingHandler;
   
-  public ConnectionTrackingChannelPipelineFactory(ChannelGroup channelGroup){
+  public ConnectionTrackingChannelInitializer(ChannelGroup channelGroup){
     this.connectionTrackingHandler = new ConnectionTrackingHandler(channelGroup);
   }
 
   @Override
-  public ChannelPipeline getPipeline() {
-    ChannelPipeline pipeline = pipeline();
-    pipeline.addLast(CONNECTION_TRACKING_HANDLER, connectionTrackingHandler);
-    return pipeline;
+  protected void initChannel(Channel ch) throws Exception {
+    ch.pipeline().addLast(CONNECTION_TRACKING_HANDLER, connectionTrackingHandler);
+    ch.pipeline().addLast(LENGTH_FIELD_PREPENDER, new LengthFieldPrepender(ByteOrder.LITTLE_ENDIAN, 4, 0, false));
+    ch.pipeline().addLast(LENGTH_FIELD_BASED_FRAME_DECODER, new LengthFieldBasedFrameDecoder(
+      ByteOrder.LITTLE_ENDIAN, Integer.MAX_VALUE, 0, 4, 0, 4, true));
   }
 }

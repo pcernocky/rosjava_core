@@ -19,7 +19,7 @@ package org.ros.internal.node.service;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.ros.exception.RosRuntimeException;
 import org.ros.internal.message.MessageBufferPool;
 import org.ros.internal.transport.ClientHandshakeListener;
@@ -151,7 +151,7 @@ public class DefaultServiceClient<T, S> implements ServiceClient<T, S> {
 
   @Override
   public void call(final T request, final ServiceResponseListener<S> listener) {
-    final ChannelBuffer buffer = messageBufferPool.acquire();
+    final ByteBuf buffer = messageBufferPool.acquire();
     serializer.serialize(request, buffer);
     responseListeners.add(listener);
     tcpClient.write(buffer).awaitUninterruptibly();
@@ -175,6 +175,6 @@ public class DefaultServiceClient<T, S> implements ServiceClient<T, S> {
 
   @Override
   public boolean isConnected() {
-    return tcpClient.getChannel().isConnected();
+    return tcpClient.getChannel().isActive();
   }
 }

@@ -16,13 +16,12 @@
 
 package org.ros.internal.transport;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.MessageEvent;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.ros.concurrent.ListenerGroup;
 import org.ros.concurrent.SignalRunnable;
-import org.ros.internal.transport.tcp.AbstractNamedChannelHandler;
+import org.ros.internal.transport.tcp.NamedChannelHandler;
 
 import java.util.concurrent.ExecutorService;
 
@@ -31,7 +30,7 @@ import java.util.concurrent.ExecutorService;
  * 
  * @author damonkohler@google.com (Damon Kohler)
  */
-public abstract class BaseClientHandshakeHandler extends AbstractNamedChannelHandler {
+public abstract class BaseClientHandshakeHandler extends ChannelInboundHandlerAdapter implements NamedChannelHandler {
 
   private final ClientHandshake clientHandshake;
   private final ListenerGroup<ClientHandshakeListener> clientHandshakeListeners;
@@ -46,20 +45,26 @@ public abstract class BaseClientHandshakeHandler extends AbstractNamedChannelHan
   }
 
   @Override
-  public void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-    super.channelConnected(ctx, e);
-    e.getChannel().write(clientHandshake.getOutgoingConnectionHeader().encode());
+  public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    super.channelActive(ctx);
+    ctx.channel().writeAndFlush(clientHandshake.getOutgoingConnectionHeader().encode());
   }
 
   @Override
-  public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-    ChannelBuffer buffer = (ChannelBuffer) e.getMessage();
-    ConnectionHeader connectionHeader = ConnectionHeader.decode(buffer);
+  public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    ByteBuf buffer = (ByteBuf) msg;
+    ConnectionHeader connectionHeader;
+    try {
+      connectionHeader = ConnectionHeader.decode(buffer);
+    }
+    finally {
+      buffer.release();
+    }
     if (clientHandshake.handshake(connectionHeader)) {
-      onSuccess(connectionHeader, ctx, e);
+      onSuccess(connectionHeader, ctx);
       signalOnSuccess(connectionHeader);
     } else {
-      onFailure(clientHandshake.getErrorMessage(), ctx, e);
+      onFailure(clientHandshake.getErrorMessage(), ctx);
       signalOnFailure(clientHandshake.getErrorMessage());
     }
   }
@@ -70,24 +75,19 @@ public abstract class BaseClientHandshakeHandler extends AbstractNamedChannelHan
    * <p>
    * This must block in order to allow changes to the pipeline to be made before
    * further messages arrive.
-   * 
-   * @param incommingConnectionHeader
-   * @param ctx
-   * @param e
    */
-  protected abstract void onSuccess(ConnectionHeader incommingConnectionHeader,
-      ChannelHandlerContext ctx, MessageEvent e);
+  protected abstract void onSuccess(ConnectionHeader incomingConnectionHeader, ChannelHandlerContext ctx);
 
-  private void signalOnSuccess(final ConnectionHeader incommingConnectionHeader) {
+  private void signalOnSuccess(final ConnectionHeader incomingConnectionHeader) {
     clientHandshakeListeners.signal(new SignalRunnable<ClientHandshakeListener>() {
       @Override
       public void run(ClientHandshakeListener listener) {
-        listener.onSuccess(clientHandshake.getOutgoingConnectionHeader(), incommingConnectionHeader);
+        listener.onSuccess(clientHandshake.getOutgoingConnectionHeader(), incomingConnectionHeader);
       }
     });
   }
 
-  protected abstract void onFailure(String errorMessage, ChannelHandlerContext ctx, MessageEvent e);
+  protected abstract void onFailure(String errorMessage, ChannelHandlerContext ctx);
 
   private void signalOnFailure(final String errorMessage) {
     clientHandshakeListeners.signal(new SignalRunnable<ClientHandshakeListener>() {

@@ -18,7 +18,7 @@ package org.ros.internal.transport.queue;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.ros.message.MessageDeserializer;
 
 /**
@@ -34,7 +34,7 @@ import org.ros.message.MessageDeserializer;
  */
 public class LazyMessage<T> {
 
-  private final ChannelBuffer buffer;
+  private final ByteBuf buffer;
   private final MessageDeserializer<T> deserializer;
   private final Object mutex;
 
@@ -42,11 +42,11 @@ public class LazyMessage<T> {
 
   /**
    * @param buffer
-   *          the {@link ChannelBuffer} to be lazily deserialized
+   *          the {@link ByteBuf} to be lazily deserialized
    * @param deserializer
    *          the {@link MessageDeserializer} to use
    */
-  public LazyMessage(ChannelBuffer buffer, MessageDeserializer<T> deserializer) {
+  public LazyMessage(ByteBuf buffer, MessageDeserializer<T> deserializer) {
     this.buffer = buffer;
     this.deserializer = deserializer;
     mutex = new Object();

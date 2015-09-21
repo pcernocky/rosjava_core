@@ -16,14 +16,14 @@
 
 package org.ros.internal.transport.queue;
 
-import org.ros.concurrent.CircularBlockingDeque;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.ros.internal.transport.tcp.AbstractNamedChannelHandler;
+import org.ros.concurrent.CircularBlockingDeque;
+import org.ros.internal.transport.tcp.NamedChannelHandler;
 import org.ros.message.MessageDeserializer;
 
 /**
@@ -32,7 +32,8 @@ import org.ros.message.MessageDeserializer;
  * @param <T>
  *          the message type
  */
-public class MessageReceiver<T> extends AbstractNamedChannelHandler {
+@Sharable
+public class MessageReceiver<T> extends ChannelInboundHandlerAdapter implements NamedChannelHandler {
 
   private static final boolean DEBUG = false;
   private static final Log log = LogFactory.getLog(MessageReceiver.class);
@@ -52,14 +53,18 @@ public class MessageReceiver<T> extends AbstractNamedChannelHandler {
   }
 
   @Override
-  public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-    ChannelBuffer buffer = (ChannelBuffer) e.getMessage();
+  public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    ByteBuf buffer = (ByteBuf) msg;
     if (DEBUG) {
       log.info(String.format("Received %d byte message.", buffer.readableBytes()));
     }
-    // We have to make a defensive copy of the buffer here because Netty does
-    // not guarantee that the returned ChannelBuffer will not be reused.
-    lazyMessages.addLast(new LazyMessage<T>(buffer.copy(), deserializer));
-    super.messageReceived(ctx, e);
+    // todo we have to release the buffer somewhere
+    lazyMessages.addLast(new LazyMessage<T>(buffer, deserializer));
   }
+
+  @Override
+  public String toString() {
+    return String.format("%s: %s", getClass().getSimpleName(), super.toString());
+  }
+
 }

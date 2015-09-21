@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Google Inc.
+ * Copyright (C) 2011 Google Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -16,16 +16,21 @@
 
 package org.ros.internal.transport.tcp;
 
-import org.jboss.netty.channel.SimpleChannelHandler;
+import io.netty.channel.Channel;
+import io.netty.channel.group.ChannelGroup;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
  */
-public abstract class AbstractNamedChannelHandler extends SimpleChannelHandler implements
-    NamedChannelHandler {
+public class TcpClientInitializer extends ConnectionTrackingChannelInitializer {
+
+  public TcpClientInitializer(ChannelGroup channelGroup) {
+    super(channelGroup);
+  }
 
   @Override
-  public String toString() {
-    return String.format("NamedChannelHandler<%s, %s>", getName(), super.toString());
+  protected void initChannel(Channel ch) throws Exception {
+    super.initChannel(ch);
   }
+
 }

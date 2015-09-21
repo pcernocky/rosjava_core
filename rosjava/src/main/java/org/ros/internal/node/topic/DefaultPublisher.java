@@ -20,8 +20,8 @@ import com.google.common.base.Preconditions;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import org.ros.concurrent.ListenerGroup;
 import org.ros.concurrent.SignalRunnable;
 import org.ros.internal.node.server.NodeIdentifier;
@@ -154,7 +154,7 @@ public class DefaultPublisher<T> extends DefaultTopicParticipant implements Publ
    * 
    * @return encoded connection header from subscriber
    */
-  public ChannelBuffer finishHandshake(ConnectionHeader incomingHeader) {
+  public ByteBuf finishHandshake(ConnectionHeader incomingHeader) {
     ConnectionHeader topicDefinitionHeader = getTopicDeclarationHeader();
     if (DEBUG) {
       log.info("Subscriber handshake header: " + incomingHeader);

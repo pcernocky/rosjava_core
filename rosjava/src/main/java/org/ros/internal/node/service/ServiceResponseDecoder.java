@@ -16,18 +16,19 @@
 
 package org.ros.internal.node.service;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.ReplayingDecoder;
+
+import java.nio.ByteOrder;
+import java.util.List;
 
 /**
  * Decodes service responses.
  * 
  * @author damonkohler@google.com (Damon Kohler)
  */
-class ServiceResponseDecoder<ResponseType> extends
-    ReplayingDecoder<ServiceResponseDecoderState> {
+class ServiceResponseDecoder extends ReplayingDecoder<ServiceResponseDecoderState> {
 
   private ServiceServerResponse response;
 
@@ -37,22 +38,20 @@ class ServiceResponseDecoder<ResponseType> extends
 
   @SuppressWarnings("fallthrough")
   @Override
-  protected Object decode(ChannelHandlerContext ctx, Channel channel, ChannelBuffer buffer,
-      ServiceResponseDecoderState state) throws Exception {
-    switch (state) {
+  protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    in = in.order(ByteOrder.LITTLE_ENDIAN);
+    switch (state()) {
       case ERROR_CODE:
-        response.setErrorCode(buffer.readByte());
+        response.setErrorCode(in.readByte());
         checkpoint(ServiceResponseDecoderState.MESSAGE_LENGTH);
       case MESSAGE_LENGTH:
-        response.setMessageLength(buffer.readInt());
+        response.setMessageLength(in.readInt());
         checkpoint(ServiceResponseDecoderState.MESSAGE);
       case MESSAGE:
-        response.setMessage(buffer.readBytes(response.getMessageLength()));
-        try {
-          return response;
-        } finally {
-          reset();
-        }
+        response.setMessage(in.readBytes(response.getMessageLength()));
+        out.add(response);
+        reset();
+        break;
       default:
         throw new IllegalStateException();
     }

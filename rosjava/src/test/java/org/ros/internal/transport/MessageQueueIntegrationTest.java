@@ -16,22 +16,18 @@
 
 package org.ros.internal.transport;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.buffer.HeapChannelBufferFactory;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,17 +43,19 @@ import org.ros.internal.transport.queue.IncomingMessageQueue;
 import org.ros.internal.transport.queue.OutgoingMessageQueue;
 import org.ros.internal.transport.tcp.TcpClient;
 import org.ros.internal.transport.tcp.TcpClientManager;
-import org.ros.internal.transport.tcp.TcpServerPipelineFactory;
+import org.ros.internal.transport.tcp.TcpServerInitializer;
 import org.ros.message.MessageDefinitionProvider;
 import org.ros.message.MessageIdentifier;
 import org.ros.message.MessageListener;
 
 import java.net.InetSocketAddress;
-import java.nio.ByteOrder;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
@@ -77,33 +75,33 @@ public class MessageQueueIntegrationTest {
   private IncomingMessageQueue<std_msgs.String> secondIncomingMessageQueue;
   private std_msgs.String expectedMessage;
 
-  private class ServerHandler extends SimpleChannelHandler {
+  private class ServerHandler extends ChannelInboundHandlerAdapter {
+
     @Override
-    public void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
       if (DEBUG) {
-        log.info("Channel connected: " + e.getChannel().toString());
+        log.info("Channel connected: " + ctx.channel().toString());
       }
-      Channel channel = e.getChannel();
+      Channel channel = ctx.channel();
       outgoingMessageQueue.addChannel(channel);
-      super.channelConnected(ctx, e);
+      super.channelActive(ctx);
     }
 
     @Override
-    public void channelDisconnected(ChannelHandlerContext ctx, ChannelStateEvent e)
-        throws Exception {
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
       if (DEBUG) {
-        log.info("Channel disconnected: " + e.getChannel().toString());
+        log.info("Channel disconnected: " + ctx.channel().toString());
       }
-      super.channelDisconnected(ctx, e);
+      super.channelInactive(ctx);
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
       if (DEBUG) {
-        log.info("Channel exception: " + e.getChannel().toString());
+        log.info("Channel exception: " + ctx.channel().toString());
       }
-      e.getChannel().close();
-      throw new RuntimeException(e.getCause());
+      ctx.channel().close();
+      throw new RuntimeException(cause);
     }
   }
 
@@ -147,33 +145,27 @@ public class MessageQueueIntegrationTest {
   private Channel buildServerChannel() {
     TopicParticipantManager topicParticipantManager = new TopicParticipantManager();
     ServiceManager serviceManager = new ServiceManager();
-    NioServerSocketChannelFactory channelFactory =
-        new NioServerSocketChannelFactory(executorService, executorService);
-    ServerBootstrap bootstrap = new ServerBootstrap(channelFactory);
-    bootstrap.setOption("child.bufferFactory",
-        new HeapChannelBufferFactory(ByteOrder.LITTLE_ENDIAN));
-    bootstrap.setOption("child.keepAlive", true);
-    ChannelGroup serverChannelGroup = new DefaultChannelGroup();
-    TcpServerPipelineFactory serverPipelineFactory =
-        new TcpServerPipelineFactory(serverChannelGroup, topicParticipantManager, serviceManager) {
-          @Override
-          public ChannelPipeline getPipeline() {
-            ChannelPipeline pipeline = super.getPipeline();
-            // We're not interested firstIncomingMessageQueue testing the
-            // handshake here. Removing it means connections are established
-            // immediately.
-            pipeline.remove(TcpServerPipelineFactory.HANDSHAKE_HANDLER);
-            pipeline.addLast("ServerHandler", new ServerHandler());
-            return pipeline;
-          }
-        };
-    bootstrap.setPipelineFactory(serverPipelineFactory);
-    Channel serverChannel = bootstrap.bind(new InetSocketAddress(0));
-    return serverChannel;
+    ServerBootstrap bootstrap = new ServerBootstrap();
+    bootstrap.childOption(ChannelOption.SO_KEEPALIVE, true);
+    bootstrap.group(new NioEventLoopGroup());
+    bootstrap.channel(NioServerSocketChannel.class);
+    ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+    bootstrap.childHandler(new TcpServerInitializer(channelGroup, topicParticipantManager, serviceManager) {
+      @Override
+      protected void initChannel(Channel ch) throws Exception {
+        super.initChannel(ch);
+        // We're not interested firstIncomingMessageQueue testing the
+        // handshake here. Removing it means connections are established
+        // immediately.
+        ch.pipeline().remove(TcpServerInitializer.HANDSHAKE_HANDLER);
+        ch.pipeline().addLast("ServerHandler", new ServerHandler());
+      }
+    });
+    return bootstrap.bind(new InetSocketAddress(0)).syncUninterruptibly().channel();
   }
 
   private TcpClient connect(TcpClientManager TcpClientManager, Channel serverChannel) {
-    return TcpClientManager.connect("Foo", serverChannel.getLocalAddress());
+    return TcpClientManager.connect("Foo", serverChannel.localAddress());
   }
 
   private CountDownLatch expectMessage(IncomingMessageQueue<std_msgs.String> incomingMessageQueue)
